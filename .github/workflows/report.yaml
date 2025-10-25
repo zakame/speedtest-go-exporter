@@ -5,6 +5,9 @@ on:
     workflows: [CI]
     types: [completed]
 
+permissions:
+  checks: write
+
 jobs:
   test-results:
     runs-on: ubuntu-latest

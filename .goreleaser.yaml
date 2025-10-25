@@ -28,15 +28,16 @@ kos:
     platforms:
       - linux/amd64
       - linux/arm64
-    labels:
-      "org.openconatiners.image.created": "{{.Date}}"
-      "org.openconatiners.image.title": "{{.ProjectName}}"
-      "org.openconatiners.image.revision": "{{.FullCommit}}"
-      "org.openconatiners.image.version": "{{.Version}}"
-      "org.openconatiners.image.authors": "Zak B. Elep https://github.com/zakame"
-      "org.openconatiners.image.source": "https://github.com/zakame/speedtest-go-exporter"
-      "org.openconatiners.image.url": "https://github.com/zakame/speedtest-go-exporter/pkgs/container/speedtest-go-exporter"
-      "org.openconatiners.image.description": "speedtest-go exporter"
+    labels: &keys
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.title": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.authors": "Zak B. Elep https://github.com/zakame"
+      "org.opencontainers.image.source": "https://github.com/zakame/speedtest-go-exporter"
+      "org.opencontainers.image.url": "https://github.com/zakame/speedtest-go-exporter/pkgs/container/speedtest-go-exporter"
+      "org.opencontainers.image.description": "speedtest-go exporter"
+    annotations: *keys
 
 archives:
   - formats: [tar.gz]

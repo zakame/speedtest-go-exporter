@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speedtest-go-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: speedtest-go-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: speedtest-go-exporter
+    spec:
+      containers:
+      - name: speedtest-go-exporter
+        image: speedtest-go-exporter
+        resources:
+          requests:
+            memory: "100Mi"
+            cpu: "1m"
+          limits:
+            memory: "100Mi"
+            cpu: "10m"
+        ports:
+        - containerPort: 9798
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault

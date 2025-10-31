@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: speedtest-go-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: speedtest-go-exporter
+  ports:
+  - port: 9798
+    targetPort: 9798
+    protocol: TCP
+    name: http

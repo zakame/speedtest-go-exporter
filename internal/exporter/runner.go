@@ -80,7 +80,7 @@ func NewSpeedtestRunner(server string, reg prometheus.Registerer) *SpeedtestRunn
 		Server: server,
 		client: speedtest.New(),
 	}
-	se := SpeedtestCollector{runner: r}
-	reg.MustRegister(se)
+	// Register the runner as a collector via helper to allow test injection.
+	RegisterSpeedtestCollector(r, reg)
 	return r
 }

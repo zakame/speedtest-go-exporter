@@ -87,3 +87,11 @@ func (se SpeedtestCollector) Collect(ch chan<- prometheus.Metric) {
 		1.0, // Indicating the speedtest was successful
 	)
 }
+
+// RegisterSpeedtestCollector registers the given Runner as a Prometheus
+// collector using the provided Registerer. This allows tests to register
+// mock runners without creating a real `SpeedtestRunner`.
+func RegisterSpeedtestCollector(r Runner, reg prometheus.Registerer) {
+	se := SpeedtestCollector{runner: r}
+	reg.MustRegister(se)
+}

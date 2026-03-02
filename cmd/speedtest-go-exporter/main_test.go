@@ -15,6 +15,20 @@ import (
 	"github.com/zakame/speedtest-go-exporter/internal/exporter"
 )
 
+// mockRunner is a test implementation of exporter.Runner that returns
+// deterministic results so tests avoid real network calls.
+type mockRunner struct{}
+
+func (m mockRunner) Run() *exporter.SpeedtestResult {
+	return &exporter.SpeedtestResult{
+		ServerID:      123,
+		DownloadSpeed: 1000.0,
+		UploadSpeed:   500.0,
+		Jitter:        1.0,
+		Ping:          2.0,
+	}
+}
+
 func TestRootHandler(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
@@ -74,9 +88,8 @@ func TestPortOverride(t *testing.T) {
 func TestMetricsEndpoint(t *testing.T) {
 	// Create a test registry
 	reg := prometheus.NewPedanticRegistry()
-
-	// Setup the speedtest runner with the registry
-	exporter.NewSpeedtestRunner("", reg)
+	// Register a mock runner so tests do not perform real network speedtests.
+	exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
 
 	// Create a test server with the metrics handler
 	ts := httptest.NewServer(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))

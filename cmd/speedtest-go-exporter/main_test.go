@@ -36,11 +36,14 @@ func TestRootHandler(t *testing.T) {
 	// Test the root handler directly
 	http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("content-type", "text/html")
-		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.")
+		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.") // nolint:errcheck
 	}).ServeHTTP(w, req)
 
 	resp := w.Result()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status OK, got %v", resp.StatusCode)
@@ -54,35 +57,30 @@ func TestRootHandler(t *testing.T) {
 }
 
 func TestPortDefault(t *testing.T) {
-	// Save original value
 	originalPort := os.Getenv("SPEEDTEST_PORT")
-
-	// Test default port
-	_ = os.Unsetenv("SPEEDTEST_PORT")
-	port := os.Getenv("SPEEDTEST_PORT")
-	if port == "" {
-		port = "9798"
+	if err := os.Unsetenv("SPEEDTEST_PORT"); err != nil {
+		t.Fatalf("failed to unset SPEEDTEST_PORT: %v", err)
 	}
-	if port != "9798" {
-		t.Errorf("Expected default port 9798, got %s", port)
+	expected := "9798"
+	if got := getPort(); got != expected {
+		t.Errorf("default port: expected %s, got %s", expected, got)
 	}
-	_ = os.Setenv("SPEEDTEST_PORT", originalPort)
+	if err := os.Setenv("SPEEDTEST_PORT", originalPort); err != nil {
+		t.Errorf("failed to restore SPEEDTEST_PORT: %v", err)
+	}
 }
 
 func TestPortOverride(t *testing.T) {
-	// Save original value
 	originalPort := os.Getenv("SPEEDTEST_PORT")
-
-	// Test custom port
-	_ = os.Setenv("SPEEDTEST_PORT", "8080")
-	port := os.Getenv("SPEEDTEST_PORT")
-	if port == "" {
-		port = "9798"
+	if err := os.Setenv("SPEEDTEST_PORT", "8080"); err != nil {
+		t.Fatalf("failed to set SPEEDTEST_PORT: %v", err)
 	}
-	if port != "8080" {
-		t.Errorf("Expected port 8080, got %s", port)
+	if got := getPort(); got != "8080" {
+		t.Errorf("override port: expected 8080, got %s", got)
 	}
-	_ = os.Setenv("SPEEDTEST_PORT", originalPort)
+	if err := os.Setenv("SPEEDTEST_PORT", originalPort); err != nil {
+		t.Errorf("failed to restore SPEEDTEST_PORT: %v", err)
+	}
 }
 
 func TestMetricsEndpoint(t *testing.T) {
@@ -114,25 +112,31 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Error("Expected non-empty response from metrics endpoint")
 	}
 
-	_ = resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Errorf("failed to close response body: %v", err)
+	}
 }
 
 func TestDebugCollectors(t *testing.T) {
-	// Save original value
 	originalDebug := os.Getenv("SPEEDTEST_EXPORTER_DEBUG")
+	defer func() {
+		if err := os.Setenv("SPEEDTEST_EXPORTER_DEBUG", originalDebug); err != nil {
+			t.Errorf("failed to restore SPEEDTEST_EXPORTER_DEBUG: %v", err)
+		}
+	}()
 
-	// Test with debug enabled
-	_ = os.Setenv("SPEEDTEST_EXPORTER_DEBUG", "true")
+	if err := os.Setenv("SPEEDTEST_EXPORTER_DEBUG", "true"); err != nil {
+		t.Fatalf("failed to set SPEEDTEST_EXPORTER_DEBUG: %v", err)
+	}
 	reg := prometheus.NewPedanticRegistry()
-
-	if os.Getenv("SPEEDTEST_EXPORTER_DEBUG") != "" {
+	if debugEnabled() {
 		reg.MustRegister(
 			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 			collectors.NewGoCollector(),
 		)
 	}
 
-	// Verify collectors are registered
+	// there should be at least one process metric when debug is on
 	metrics, err := reg.Gather()
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +153,93 @@ func TestDebugCollectors(t *testing.T) {
 	if !hasProcessMetrics {
 		t.Error("No process metrics found when debug is enabled")
 	}
+}
 
-	_ = os.Setenv("SPEEDTEST_EXPORTER_DEBUG", originalDebug)
+func TestGetServerID(t *testing.T) {
+	originalServer := os.Getenv("SPEEDTEST_SERVER")
+	defer func() {
+		if err := os.Setenv("SPEEDTEST_SERVER", originalServer); err != nil {
+			t.Errorf("failed to restore SPEEDTEST_SERVER: %v", err)
+		}
+	}()
+
+	if err := os.Setenv("SPEEDTEST_SERVER", "xyz"); err != nil {
+		t.Fatalf("failed to set SPEEDTEST_SERVER: %v", err)
+	}
+	if got := getServerID(); got != "xyz" {
+		t.Errorf("expected server id 'xyz', got '%s'", got)
+	}
+}
+
+func TestDebugEnabled(t *testing.T) {
+	originalDebug := os.Getenv("SPEEDTEST_EXPORTER_DEBUG")
+	defer func() {
+		if err := os.Setenv("SPEEDTEST_EXPORTER_DEBUG", originalDebug); err != nil {
+			t.Errorf("failed to restore SPEEDTEST_EXPORTER_DEBUG: %v", err)
+		}
+	}()
+
+	if err := os.Unsetenv("SPEEDTEST_EXPORTER_DEBUG"); err != nil {
+		t.Fatalf("failed to unset SPEEDTEST_EXPORTER_DEBUG: %v", err)
+	}
+	if debugEnabled() {
+		t.Error("debugEnabled should be false when env unset")
+	}
+	if err := os.Setenv("SPEEDTEST_EXPORTER_DEBUG", "1"); err != nil {
+		t.Fatalf("failed to set SPEEDTEST_EXPORTER_DEBUG: %v", err)
+	}
+	if !debugEnabled() {
+		t.Error("debugEnabled should be true when env is non-empty")
+	}
+}
+
+func TestNewMuxHandlers(t *testing.T) {
+	// build a simple registry with one dummy metric
+	dummy := prometheus.NewCounter(prometheus.CounterOpts{Name: "dummy"})
+	reg := prometheus.NewPedanticRegistry()
+	reg.MustRegister(dummy)
+	mux := newMux(reg)
+
+	// run the mux via httptest server
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatalf("root request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("root handler status = %v", resp.StatusCode)
+	}
+
+	resp2, err := http.Get(ts.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("metrics request failed: %v", err)
+	}
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("metrics handler status = %v", resp2.StatusCode)
+	}
+}
+
+func TestRunError(t *testing.T) {
+	// override the listener to avoid starting a real server or triggering
+	// collection; also simulate an error so we exercise the error path.
+	origListen := listenAndServe
+	listenAndServe = func(addr string, handler http.Handler) error {
+		return fmt.Errorf("simulated failure")
+	}
+	defer func() { listenAndServe = origListen }()
+
+	// stub out newMux to avoid creating a handler that will gather and run the
+	// real speedtest collector.
+	origMux := newMux
+	newMux = func(reg prometheus.Gatherer) *http.ServeMux {
+		return http.NewServeMux()
+	}
+	defer func() { newMux = origMux }()
+
+	err := run("any", "", false)
+	if err == nil || !strings.Contains(err.Error(), "simulated failure") {
+		t.Errorf("expected simulated failure, got %v", err)
+	}
 }

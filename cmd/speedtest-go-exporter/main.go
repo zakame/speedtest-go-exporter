@@ -38,11 +38,16 @@ func debugEnabled() bool {
 	return os.Getenv("SPEEDTEST_EXPORTER_DEBUG") != ""
 }
 
+// newSpeedtestRunner is a variable so tests can override it.
+var newSpeedtestRunner = func(serverID string, reg prometheus.Registerer) {
+	exporter.NewSpeedtestRunner(serverID, reg, nil)
+}
+
 // newRegistry builds a Prometheus registry, registers a speedtest runner,
 // and optionally adds the debug collectors.
 func newRegistry(serverID string, debug bool) *prometheus.Registry {
 	reg := prometheus.NewPedanticRegistry()
-	exporter.NewSpeedtestRunner(serverID, reg, nil)
+	newSpeedtestRunner(serverID, reg)
 	if debug {
 		reg.MustRegister(
 			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),

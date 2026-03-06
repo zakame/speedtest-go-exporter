@@ -117,6 +117,122 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 }
 
+func TestNewRegistry_DebugEnabled(t *testing.T) {
+	// Mock the runner creation to avoid real network calls
+	origRunner := newSpeedtestRunner
+	newSpeedtestRunner = func(serverID string, reg prometheus.Registerer) {
+		exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
+	}
+	defer func() { newSpeedtestRunner = origRunner }()
+
+	reg := newRegistry("test-server", true)
+
+	if reg == nil {
+		t.Fatal("expected non-nil registry")
+	}
+
+	// Gather metrics and verify debug collectors are present
+	metrics, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have speedtest, process_, and go_ metrics when debug is true
+	hasSpeedtestMetrics := false
+	hasProcessMetrics := false
+	hasGoMetrics := false
+	for _, mf := range metrics {
+		if strings.HasPrefix(mf.GetName(), "speedtest_") {
+			hasSpeedtestMetrics = true
+		}
+		if strings.HasPrefix(mf.GetName(), "process_") {
+			hasProcessMetrics = true
+		}
+		if strings.HasPrefix(mf.GetName(), "go_") {
+			hasGoMetrics = true
+		}
+	}
+
+	if !hasSpeedtestMetrics {
+		t.Error("Expected speedtest metrics")
+	}
+	if !hasProcessMetrics {
+		t.Error("Expected process_ metrics when debug enabled")
+	}
+	if !hasGoMetrics {
+		t.Error("Expected go_ metrics when debug enabled")
+	}
+}
+
+func TestNewRegistry_DebugDisabled(t *testing.T) {
+	// Mock the runner creation to avoid real network calls
+	origRunner := newSpeedtestRunner
+	newSpeedtestRunner = func(serverID string, reg prometheus.Registerer) {
+		exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
+	}
+	defer func() { newSpeedtestRunner = origRunner }()
+
+	reg := newRegistry("", false)
+
+	if reg == nil {
+		t.Fatal("expected non-nil registry")
+	}
+
+	// Gather metrics
+	metrics, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have speedtest metrics but NOT process/go metrics when debug is false
+	hasSpeedtestMetrics := false
+	hasProcessMetrics := false
+	hasGoMetrics := false
+	for _, mf := range metrics {
+		if strings.HasPrefix(mf.GetName(), "speedtest_") {
+			hasSpeedtestMetrics = true
+		}
+		if strings.HasPrefix(mf.GetName(), "process_") {
+			hasProcessMetrics = true
+		}
+		if strings.HasPrefix(mf.GetName(), "go_") {
+			hasGoMetrics = true
+		}
+	}
+
+	if !hasSpeedtestMetrics {
+		t.Error("Expected speedtest metrics")
+	}
+	if hasProcessMetrics {
+		t.Error("Did not expect process_ metrics when debug disabled")
+	}
+	if hasGoMetrics {
+		t.Error("Did not expect go_ metrics when debug disabled")
+	}
+}
+
+func TestNewRegistry_WithServerID(t *testing.T) {
+	// Mock the runner creation to avoid real network calls
+	origRunner := newSpeedtestRunner
+	var capturedServerID string
+	newSpeedtestRunner = func(serverID string, reg prometheus.Registerer) {
+		capturedServerID = serverID
+		exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
+	}
+	defer func() { newSpeedtestRunner = origRunner }()
+
+	reg := newRegistry("12345", false)
+
+	if reg == nil {
+		t.Fatal("expected non-nil registry")
+	}
+
+	// Verify the server ID was passed through
+	if capturedServerID != "12345" {
+		t.Errorf("expected server ID '12345', got '%s'", capturedServerID)
+	}
+}
+
 func TestDebugCollectors(t *testing.T) {
 	originalDebug := os.Getenv("SPEEDTEST_EXPORTER_DEBUG")
 	defer func() {

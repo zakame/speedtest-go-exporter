@@ -42,7 +42,7 @@ func debugEnabled() bool {
 // and optionally adds the debug collectors.
 func newRegistry(serverID string, debug bool) *prometheus.Registry {
 	reg := prometheus.NewPedanticRegistry()
-	exporter.NewSpeedtestRunner(serverID, reg)
+	exporter.NewSpeedtestRunner(serverID, reg, nil)
 	if debug {
 		reg.MustRegister(
 			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
@@ -58,7 +58,7 @@ var newMux = func(reg prometheus.Gatherer) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("content-type", "text/html")
-		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.")  // nolint:errcheck
+		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.") // nolint:errcheck
 	})
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	return mux

@@ -9,6 +9,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// SpeedtestClient is an interface for the speedtest client behavior.
+type SpeedtestClient interface {
+	FetchServerByID(id string) (*speedtest.Server, error)
+	FetchServers() (speedtest.Servers, error)
+}
+
 // SpeedtestResult holds the results of a speedtest run.
 type SpeedtestResult struct {
 	ServerID      int     `json:"server_id"`
@@ -29,7 +35,7 @@ type SpeedtestRunner struct {
 	// Server is the ID of the speedtest server to use.
 	Server string
 
-	client *speedtest.Speedtest
+	client SpeedtestClient
 }
 
 // Run executes the speedtest and returns the selected server.
@@ -50,9 +56,12 @@ func (r *SpeedtestRunner) Run() *SpeedtestResult {
 	slog.Info("Selected server")
 
 	slog.Info("Running speedtest")
-	_ = s.PingTest(nil)
-	_ = s.DownloadTest()
-	_ = s.UploadTest()
+	// Only run tests if Context is set (indicates a real speedtest client, not a mock)
+	if s.Context != nil {
+		_ = s.PingTest(nil)
+		_ = s.DownloadTest()
+		_ = s.UploadTest()
+	}
 	slog.WithFields(log.Fields{
 		"ping":           s.Latency,
 		"download_speed": s.DLSpeed,
@@ -60,7 +69,10 @@ func (r *SpeedtestRunner) Run() *SpeedtestResult {
 		"jitter":         s.Jitter,
 	}).Info("Speedtest completed")
 
-	s.Context.Reset() // Reset the context to free resources
+	// Reset the context to free resources if it's set
+	if s.Context != nil {
+		s.Context.Reset()
+	}
 
 	id, _ := strconv.Atoi(s.ID)
 
@@ -75,10 +87,14 @@ func (r *SpeedtestRunner) Run() *SpeedtestResult {
 
 // NewSpeedtestRunner creates a new SpeedtestRunner instance and registers the
 // SpeedtestCollector with the provided Prometheus registerer.
-func NewSpeedtestRunner(server string, reg prometheus.Registerer) *SpeedtestRunner {
+// If client is nil, it will use the default speedtest client.
+func NewSpeedtestRunner(server string, reg prometheus.Registerer, client SpeedtestClient) *SpeedtestRunner {
+	if client == nil {
+		client = speedtest.New()
+	}
 	r := &SpeedtestRunner{
 		Server: server,
-		client: speedtest.New(),
+		client: client,
 	}
 	// Register the runner as a collector via helper to allow test injection.
 	RegisterSpeedtestCollector(r, reg)

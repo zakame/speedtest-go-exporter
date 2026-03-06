@@ -39,7 +39,7 @@ func TestNewSpeedtestRunnerRegistersCollector(t *testing.T) {
 
 	// Create a new runner which should register a SpeedtestCollector via
 	// RegisterSpeedtestCollector.
-	r := NewSpeedtestRunner("42", fr)
+	r := NewSpeedtestRunner("42", fr, nil)
 
 	assert.NotNil(t, r)
 	assert.Equal(t, "42", r.Server)

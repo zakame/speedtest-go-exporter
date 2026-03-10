@@ -8,10 +8,10 @@ resources:
 images:
 - name: speedtest-go-exporter
   newName: ghcr.io/zakame/speedtest-go-exporter
-  newTag: 1.1.0
+  newTag: master
 labels:
 - includeSelectors: true
   pairs:
     app.kubernetes.io/component: exporter
     app.kubernetes.io/name: speedtest-go-exporter
-    app.kubernetes.io/version: 1.1.0
+    app.kubernetes.io/version: master

@@ -21,9 +21,16 @@ spec:
             cpu: "1m"
           limits:
             memory: "100Mi"
-            cpu: "10m"
         ports:
-        - containerPort: 9798
+        - name: http
+          containerPort: 9798
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

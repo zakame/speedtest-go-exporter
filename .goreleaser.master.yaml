@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+#
+# Builds and pushes a master-tagged Docker image only (no binaries/release).
+# Used by .github/workflows/master.yaml on every push to master.
+
+version: 2
+
+kos:
+  - repositories: [ghcr.io/zakame/speedtest-go-exporter]
+    tags:
+      - "master"
+      - "{{.ShortCommit}}"
+    bare: true
+    preserve_import_paths: false
+    sbom: spdx
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels: &keys
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.title": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.ShortCommit}}"
+      "org.opencontainers.image.authors": "Zak B. Elep https://github.com/zakame"
+      "org.opencontainers.image.source": "https://github.com/zakame/speedtest-go-exporter"
+      "org.opencontainers.image.url": "https://github.com/zakame/speedtest-go-exporter/pkgs/container/speedtest-go-exporter"
+      "org.opencontainers.image.description": "speedtest-go exporter"
+    annotations: *keys

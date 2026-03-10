@@ -21,7 +21,9 @@ builds:
 
 kos:
   - repositories: [ghcr.io/zakame/speedtest-go-exporter]
-    tags: ["{{.Version}}"]
+    tags:
+      - "{{.Version}}"
+      - "master"
     bare: true
     preserve_import_paths: false
     sbom: spdx

@@ -6,6 +6,9 @@
 
 version: 2
 
+release:
+  disable: true
+
 before:
   hooks:
     - go mod tidy

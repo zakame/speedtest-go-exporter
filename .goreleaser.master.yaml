@@ -6,6 +6,22 @@
 
 version: 2
 
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+
+builds:
+  - env: [CGO_ENABLED=0]
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/speedtest-go-exporter
+
 kos:
   - repositories: [ghcr.io/zakame/speedtest-go-exporter]
     tags:

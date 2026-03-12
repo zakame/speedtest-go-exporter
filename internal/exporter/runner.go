@@ -70,32 +70,17 @@ func (r *SpeedtestRunner) Run(ctx context.Context) (*SpeedtestResult, error) {
 	slog.Info("Selected server")
 
 	slog.Info("Running speedtest")
-	// Only run tests if Context is set (indicates a real speedtest client, not a mock)
+	// Only run tests if Context is set (indicates a real speedtest client, not a mock).
+	// Use the context-aware variants so cancellation aborts in-flight network I/O.
 	if s.Context != nil {
-		done := make(chan error, 1)
-		go func() {
-			if err := s.PingTest(nil); err != nil {
-				done <- fmt.Errorf("ping test: %w", err)
-				return
-			}
-			if err := s.DownloadTest(); err != nil {
-				done <- fmt.Errorf("download test: %w", err)
-				return
-			}
-			if err := s.UploadTest(); err != nil {
-				done <- fmt.Errorf("upload test: %w", err)
-				return
-			}
-			done <- nil
-		}()
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case err := <-done:
-			if err != nil {
-				return nil, err
-			}
+		if err := s.PingTestContext(ctx, nil); err != nil {
+			return nil, fmt.Errorf("ping test: %w", err)
+		}
+		if err := s.DownloadTestContext(ctx); err != nil {
+			return nil, fmt.Errorf("download test: %w", err)
+		}
+		if err := s.UploadTestContext(ctx); err != nil {
+			return nil, fmt.Errorf("upload test: %w", err)
 		}
 	}
 
@@ -113,7 +98,7 @@ func (r *SpeedtestRunner) Run(ctx context.Context) (*SpeedtestResult, error) {
 
 	id, err := strconv.Atoi(s.ID)
 	if err != nil {
-		log.WithField("id", s.ID).Warn("Server ID is not a valid integer, using 0")
+		return nil, fmt.Errorf("server returned non-integer ID %q: %w", s.ID, err)
 	}
 
 	return &SpeedtestResult{

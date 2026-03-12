@@ -262,10 +262,9 @@ func TestSpeedtestRunner_NoServersFound(t *testing.T) {
 	mockClient.AssertCalled(t, "FetchServers")
 }
 
-// TestSpeedtestRunner_NonIntegerServerID verifies that when the speedtest server
-// reports a non-integer ID, Run still returns a valid result with ServerID=0
-// rather than an error.  This pins the documented "log warning, use 0" behavior
-// so any future change in that policy is caught immediately.
+// TestSpeedtestRunner_NonIntegerServerID verifies that Run returns an error
+// when the speedtest server reports a non-integer ID, since server IDs are
+// always integers and a non-numeric value indicates an unexpected API response.
 func TestSpeedtestRunner_NonIntegerServerID(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
 	mockServer := createMockServer(
@@ -286,15 +285,9 @@ func TestSpeedtestRunner_NonIntegerServerID(t *testing.T) {
 
 	result, err := runner.Run(context.Background())
 
-	// The implementation logs a warning and continues — it must NOT return an error.
-	assert.NoError(t, err, "non-integer server ID should not produce an error")
-	assert.NotNil(t, result, "result must be non-nil even with non-integer server ID")
-	assert.Equal(t, 0, result.ServerID, "non-integer server ID must fall back to 0")
-	// Other fields must still be populated from the server values.
-	assert.Equal(t, float64(1000000000), result.DownloadSpeed)
-	assert.Equal(t, float64(500000000), result.UploadSpeed)
-	assert.Equal(t, 10.0, result.Ping)
-	assert.Equal(t, 3.0, result.Jitter)
+	assert.Error(t, err, "non-integer server ID must return an error")
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "not-an-int")
 }
 
 // TestSpeedtestRunner_FetchServerByIDError_WrapsError verifies that the error
@@ -364,9 +357,11 @@ func networkAvailable() bool {
 }
 
 // TestSpeedtestRunner_ContextCancellation exercises the context-cancellation
-// path inside Run, which requires s.Context != nil (set only by the real
-// speedtest client).  The test is skipped automatically when no network is
-// detected so it is safe to run in CI without internet access.
+// path inside Run. The context-aware library methods (PingTestContext,
+// DownloadTestContext, UploadTestContext) abort in-flight network I/O when the
+// context is cancelled, so no background goroutine is left running.
+// The test is skipped automatically when no network is detected so it is safe
+// to run in CI without internet access.
 func TestSpeedtestRunner_ContextCancellation(t *testing.T) {
 	if !networkAvailable() {
 		t.Skip("no network available; skipping live speedtest cancellation test")

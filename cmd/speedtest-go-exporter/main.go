@@ -63,7 +63,7 @@ var newMux = func(reg prometheus.Gatherer) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("content-type", "text/html")
-		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.") // nolint:errcheck
+		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.")
 	})
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	return mux

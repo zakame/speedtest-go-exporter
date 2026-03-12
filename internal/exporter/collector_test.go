@@ -1,8 +1,11 @@
 package exporter
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -13,10 +16,11 @@ import (
 // MockRunner implements the Runner interface for testing
 type MockRunner struct {
 	result *SpeedtestResult
+	err    error
 }
 
-func (m MockRunner) Run() *SpeedtestResult {
-	return m.result
+func (m MockRunner) Run(_ context.Context) (*SpeedtestResult, error) {
+	return m.result, m.err
 }
 
 func TestSpeedtestCollector_Describe(t *testing.T) {
@@ -31,6 +35,7 @@ func TestSpeedtestCollector_Describe(t *testing.T) {
 				UploadSpeed:   50000000,  // 50 Mbps
 			},
 		},
+		timeout: 5 * time.Second,
 	}
 
 	// Create a channel to receive descriptions
@@ -55,7 +60,8 @@ func TestSpeedtestCollector_Collect(t *testing.T) {
 
 	// Create collector with mock runner
 	collector := SpeedtestCollector{
-		runner: MockRunner{result: mockResult},
+		runner:  MockRunner{result: mockResult},
+		timeout: 5 * time.Second,
 	}
 
 	// Create a channel to receive metrics
@@ -89,7 +95,8 @@ func TestSpeedtestCollector_MetricValues(t *testing.T) {
 
 	// Create collector with mock runner
 	collector := SpeedtestCollector{
-		runner: MockRunner{result: mockResult},
+		runner:  MockRunner{result: mockResult},
+		timeout: 5 * time.Second,
 	}
 
 	// Create a registry and register our collector
@@ -120,4 +127,39 @@ speedtest_upload_bits_per_second 5e+07
 
 	err := testutil.GatherAndCompare(registry, strings.NewReader(expected))
 	require.NoError(t, err)
+}
+
+// TestSpeedtestCollector_CollectOnRunnerError verifies that when the Runner
+// returns an error, Collect emits all-zeros for every metric and sets
+// speedtest_up to 0.  The pedantic registry is used so any descriptor
+// mismatch would also surface as an error.
+func TestSpeedtestCollector_CollectOnRunnerError(t *testing.T) {
+	collector := SpeedtestCollector{
+		runner:  MockRunner{result: nil, err: errors.New("test failure")},
+		timeout: 5 * time.Second,
+	}
+
+	registry := prometheus.NewPedanticRegistry()
+	registry.MustRegister(collector)
+
+	gathered, err := registry.Gather()
+	require.NoError(t, err, "Gather must not return an error even when the runner fails")
+
+	// Build a map of metric-family name -> value for easy assertion.
+	values := make(map[string]float64, len(gathered))
+	for _, mf := range gathered {
+		if len(mf.GetMetric()) > 0 {
+			values[mf.GetName()] = mf.GetMetric()[0].GetGauge().GetValue()
+		}
+	}
+
+	assert.Equal(t, float64(0), values["speedtest_up"], "speedtest_up must be 0 on error")
+	assert.Equal(t, float64(0), values["speedtest_server_id"], "speedtest_server_id must be 0 on error")
+	assert.Equal(t, float64(0), values["speedtest_download_bits_per_second"], "download speed must be 0 on error")
+	assert.Equal(t, float64(0), values["speedtest_upload_bits_per_second"], "upload speed must be 0 on error")
+	assert.Equal(t, float64(0), values["speedtest_ping_latency_milliseconds"], "ping must be 0 on error")
+	assert.Equal(t, float64(0), values["speedtest_jitter_latency_milliseconds"], "jitter must be 0 on error")
+
+	// Confirm all 6 metric families are present (no silently dropped metrics).
+	assert.Len(t, gathered, 6, "all 6 metric families must be emitted even on runner error")
 }

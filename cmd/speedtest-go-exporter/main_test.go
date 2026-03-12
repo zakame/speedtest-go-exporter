@@ -445,7 +445,11 @@ func TestMetricsEndpoint_ContainsSpeedtestMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request to metrics endpoint failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %v", resp.StatusCode)
@@ -489,7 +493,11 @@ func TestNewMuxHandlers_RootBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("root request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 OK, got %v", resp.StatusCode)

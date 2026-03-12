@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,14 +20,14 @@ import (
 // deterministic results so tests avoid real network calls.
 type mockRunner struct{}
 
-func (m mockRunner) Run() *exporter.SpeedtestResult {
+func (m mockRunner) Run(_ context.Context) (*exporter.SpeedtestResult, error) {
 	return &exporter.SpeedtestResult{
 		ServerID:      123,
 		DownloadSpeed: 1000.0,
 		UploadSpeed:   500.0,
 		Jitter:        1.0,
 		Ping:          2.0,
-	}
+	}, nil
 }
 
 func TestRootHandler(t *testing.T) {
@@ -36,7 +37,7 @@ func TestRootHandler(t *testing.T) {
 	// Test the root handler directly
 	http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("content-type", "text/html")
-		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.") // nolint:errcheck
+		_, _ = fmt.Fprintf(w, "See the <a href='/metrics'>metrics</a>.")
 	}).ServeHTTP(w, req)
 
 	resp := w.Result()
@@ -87,7 +88,7 @@ func TestMetricsEndpoint(t *testing.T) {
 	// Create a test registry
 	reg := prometheus.NewPedanticRegistry()
 	// Register a mock runner so tests do not perform real network speedtests.
-	exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
+	exporter.RegisterSpeedtestCollector(mockRunner{}, reg, exporter.DefaultCollectTimeout)
 
 	// Create a test server with the metrics handler
 	ts := httptest.NewServer(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
@@ -121,7 +122,7 @@ func TestNewRegistry_DebugEnabled(t *testing.T) {
 	// Mock the runner creation to avoid real network calls
 	origRunner := newSpeedtestRunner
 	newSpeedtestRunner = func(serverID string, reg prometheus.Registerer) {
-		exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
+		exporter.RegisterSpeedtestCollector(mockRunner{}, reg, exporter.DefaultCollectTimeout)
 	}
 	defer func() { newSpeedtestRunner = origRunner }()
 
@@ -168,7 +169,7 @@ func TestNewRegistry_DebugDisabled(t *testing.T) {
 	// Mock the runner creation to avoid real network calls
 	origRunner := newSpeedtestRunner
 	newSpeedtestRunner = func(serverID string, reg prometheus.Registerer) {
-		exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
+		exporter.RegisterSpeedtestCollector(mockRunner{}, reg, exporter.DefaultCollectTimeout)
 	}
 	defer func() { newSpeedtestRunner = origRunner }()
 
@@ -217,7 +218,7 @@ func TestNewRegistry_WithServerID(t *testing.T) {
 	var capturedServerID string
 	newSpeedtestRunner = func(serverID string, reg prometheus.Registerer) {
 		capturedServerID = serverID
-		exporter.RegisterSpeedtestCollector(mockRunner{}, reg)
+		exporter.RegisterSpeedtestCollector(mockRunner{}, reg, exporter.DefaultCollectTimeout)
 	}
 	defer func() { newSpeedtestRunner = origRunner }()
 

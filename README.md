@@ -83,7 +83,11 @@ The exporter provides the following Prometheus metrics:
 | `speedtest_ping_latency_milliseconds` | Gauge | Ping latency in milliseconds |
 | `speedtest_download_bits_per_second` | Gauge | Download speed in bits per second |
 | `speedtest_upload_bits_per_second` | Gauge | Upload speed in bits per second |
-| `speedtest_up` | Gauge | Speedtest up status (1 = successful test) |
+| `speedtest_up` | Gauge | Speedtest up status (`1` = successful, `0` = failed) |
+
+When a speedtest fails (network error, server unreachable, timeout), `speedtest_up` is set to `0`
+and all other metrics are set to `0`. Use `speedtest_up == 0` as the signal in alerts — the
+zeroed values for speed/latency metrics on failure should be ignored.
 
 When `SPEEDTEST_EXPORTER_DEBUG` is enabled, additional Go runtime metrics are also exposed.
 
@@ -172,6 +176,11 @@ scrape_configs:
 ```
 
 **Note:** Set appropriate `scrape_interval` values as speed tests consume bandwidth and may be rate-limited by test servers. Running tests too frequently may also impact your network performance.
+
+The exporter has a built-in **90-second collection timeout** per scrape. If the speedtest server does
+not respond within that window, the scrape returns `speedtest_up 0` with all other metrics zeroed.
+Set `scrape_timeout` to a value greater than 90s (e.g. `2m`) so Prometheus waits for the exporter to
+return the failure metrics rather than timing out the scrape itself.
 
 ## License
 

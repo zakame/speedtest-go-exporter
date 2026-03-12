@@ -1,6 +1,8 @@
 package exporter
 
 import (
+	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -26,8 +28,8 @@ type SpeedtestResult struct {
 
 // Runner is an interface for modelling a speedtest runner.
 type Runner interface {
-	// Run executes the speedtest and returns the selected server.
-	Run() *SpeedtestResult
+	// Run executes the speedtest and returns the result, or an error if the test failed.
+	Run(ctx context.Context) (*SpeedtestResult, error)
 }
 
 // SpeedtestRunner implements [Runner] using [speedtest.Speedtest].
@@ -38,17 +40,29 @@ type SpeedtestRunner struct {
 	client SpeedtestClient
 }
 
-// Run executes the speedtest and returns the selected server.
-func (r *SpeedtestRunner) Run() *SpeedtestResult {
+// Run executes the speedtest and returns the result, or an error if the test failed.
+func (r *SpeedtestRunner) Run(ctx context.Context) (*SpeedtestResult, error) {
 	var s *speedtest.Server
+
 	if r.Server != "" {
-		s, _ = r.client.FetchServerByID(r.Server)
+		var err error
+		s, err = r.client.FetchServerByID(r.Server)
+		if err != nil {
+			return nil, fmt.Errorf("fetch server %s: %w", r.Server, err)
+		}
 	} else {
-		log.Warn("Finding the best server")
-		serverList, _ := r.client.FetchServers()
-		targets, _ := serverList.FindServer([]int{})
+		log.Info("Finding the best server")
+		serverList, err := r.client.FetchServers()
+		if err != nil {
+			return nil, fmt.Errorf("fetch servers: %w", err)
+		}
+		targets, err := serverList.FindServer([]int{})
+		if err != nil {
+			return nil, fmt.Errorf("find server: %w", err)
+		}
 		s = targets[0]
 	}
+
 	slog := log.WithFields(log.Fields{
 		"sponsor": s.Sponsor,
 		"id":      s.ID,
@@ -58,10 +72,33 @@ func (r *SpeedtestRunner) Run() *SpeedtestResult {
 	slog.Info("Running speedtest")
 	// Only run tests if Context is set (indicates a real speedtest client, not a mock)
 	if s.Context != nil {
-		_ = s.PingTest(nil)
-		_ = s.DownloadTest()
-		_ = s.UploadTest()
+		done := make(chan error, 1)
+		go func() {
+			if err := s.PingTest(nil); err != nil {
+				done <- fmt.Errorf("ping test: %w", err)
+				return
+			}
+			if err := s.DownloadTest(); err != nil {
+				done <- fmt.Errorf("download test: %w", err)
+				return
+			}
+			if err := s.UploadTest(); err != nil {
+				done <- fmt.Errorf("upload test: %w", err)
+				return
+			}
+			done <- nil
+		}()
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err := <-done:
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
+
 	slog.WithFields(log.Fields{
 		"ping":           s.Latency,
 		"download_speed": s.DLSpeed,
@@ -74,7 +111,10 @@ func (r *SpeedtestRunner) Run() *SpeedtestResult {
 		s.Context.Reset()
 	}
 
-	id, _ := strconv.Atoi(s.ID)
+	id, err := strconv.Atoi(s.ID)
+	if err != nil {
+		log.WithField("id", s.ID).Warn("Server ID is not a valid integer, using 0")
+	}
 
 	return &SpeedtestResult{
 		ServerID:      id,
@@ -82,7 +122,7 @@ func (r *SpeedtestRunner) Run() *SpeedtestResult {
 		UploadSpeed:   float64(s.ULSpeed * 8),                         // Convert to bits per second
 		Jitter:        float64(s.Jitter) / float64(time.Millisecond),  // Convert to milliseconds
 		Ping:          float64(s.Latency) / float64(time.Millisecond), // Convert to milliseconds
-	}
+	}, nil
 }
 
 // NewSpeedtestRunner creates a new SpeedtestRunner instance and registers the
@@ -97,6 +137,6 @@ func NewSpeedtestRunner(server string, reg prometheus.Registerer, client Speedte
 		client: client,
 	}
 	// Register the runner as a collector via helper to allow test injection.
-	RegisterSpeedtestCollector(r, reg)
+	RegisterSpeedtestCollector(r, reg, DefaultCollectTimeout)
 	return r
 }

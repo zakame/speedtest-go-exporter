@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -261,15 +262,137 @@ func TestSpeedtestRunner_NoServersFound(t *testing.T) {
 	mockClient.AssertCalled(t, "FetchServers")
 }
 
-// TestSpeedtestRunner_ContextCancellation documents the known limitation:
-// the context-cancellation path inside Run is only reachable when
-// s.Context != nil (i.e. a real speedtest client, not a mock server).
-// Because createMockServer leaves Context nil, the goroutine path is never
-// entered in unit tests and this scenario cannot be exercised without a live
-// network connection.  The test is therefore skipped and serves as a reminder
-// of this coverage gap.
+// TestSpeedtestRunner_NonIntegerServerID verifies that when the speedtest server
+// reports a non-integer ID, Run still returns a valid result with ServerID=0
+// rather than an error.  This pins the documented "log warning, use 0" behavior
+// so any future change in that policy is caught immediately.
+func TestSpeedtestRunner_NonIntegerServerID(t *testing.T) {
+	mockClient := new(MockSpeedtestClient)
+	mockServer := createMockServer(
+		"not-an-int",
+		"Weird ISP",
+		10*time.Millisecond,
+		125000000, // 1000 Mbps in bytes
+		62500000,  // 500 Mbps in bytes
+		3*time.Millisecond,
+	)
+
+	mockClient.On("FetchServerByID", "not-an-int").Return(mockServer, nil)
+
+	runner := &SpeedtestRunner{
+		Server: "not-an-int",
+		client: mockClient,
+	}
+
+	result, err := runner.Run(context.Background())
+
+	// The implementation logs a warning and continues — it must NOT return an error.
+	assert.NoError(t, err, "non-integer server ID should not produce an error")
+	assert.NotNil(t, result, "result must be non-nil even with non-integer server ID")
+	assert.Equal(t, 0, result.ServerID, "non-integer server ID must fall back to 0")
+	// Other fields must still be populated from the server values.
+	assert.Equal(t, float64(1000000000), result.DownloadSpeed)
+	assert.Equal(t, float64(500000000), result.UploadSpeed)
+	assert.Equal(t, 10.0, result.Ping)
+	assert.Equal(t, 3.0, result.Jitter)
+}
+
+// TestSpeedtestRunner_FetchServerByIDError_WrapsError verifies that the error
+// message returned when FetchServerByID fails includes the server ID so
+// operators can identify which server caused the problem.
+func TestSpeedtestRunner_FetchServerByIDError_WrapsError(t *testing.T) {
+	mockClient := new(MockSpeedtestClient)
+	mockClient.On("FetchServerByID", "9001").Return(nil, assert.AnError)
+
+	runner := &SpeedtestRunner{
+		Server: "9001",
+		client: mockClient,
+	}
+
+	_, err := runner.Run(context.Background())
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "9001", "error message must include the server ID")
+}
+
+// TestSpeedtestRunner_FetchServersError_WrapsError verifies that the error
+// returned when FetchServers fails contains identifying context.
+func TestSpeedtestRunner_FetchServersError_WrapsError(t *testing.T) {
+	mockClient := new(MockSpeedtestClient)
+	mockClient.On("FetchServers").Return(nil, assert.AnError)
+
+	runner := &SpeedtestRunner{
+		Server: "",
+		client: mockClient,
+	}
+
+	_, err := runner.Run(context.Background())
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "fetch servers", "error must mention fetch servers")
+}
+
+// TestSpeedtestRunner_NoServersFound_ErrorMessage verifies that the error
+// returned when FindServer finds nothing contains "find server" context.
+// Note: speedtest.Servers{}.FindServer returns its own library error before
+// our len(targets)==0 guard is reached, so the wrapped message is "find server: ...".
+func TestSpeedtestRunner_NoServersFound_ErrorMessage(t *testing.T) {
+	mockClient := new(MockSpeedtestClient)
+	mockClient.On("FetchServers").Return(speedtest.Servers{}, nil)
+
+	runner := &SpeedtestRunner{
+		Server: "",
+		client: mockClient,
+	}
+
+	_, err := runner.Run(context.Background())
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "find server",
+		"error must contain 'find server' context")
+}
+
+// networkAvailable returns true if a TCP connection to the speedtest API can
+// be established within 3 seconds, indicating a live internet connection.
+func networkAvailable() bool {
+	conn, err := net.DialTimeout("tcp", "www.speedtest.net:443", 3*time.Second)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+// TestSpeedtestRunner_ContextCancellation exercises the context-cancellation
+// path inside Run, which requires s.Context != nil (set only by the real
+// speedtest client).  The test is skipped automatically when no network is
+// detected so it is safe to run in CI without internet access.
 func TestSpeedtestRunner_ContextCancellation(t *testing.T) {
-	t.Skip("context-cancellation path requires s.Context != nil, " +
-		"which is only set by the real speedtest client; " +
-		"cannot be unit-tested without a live network connection")
+	if !networkAvailable() {
+		t.Skip("no network available; skipping live speedtest cancellation test")
+	}
+
+	client := speedtest.New()
+	serverList, err := client.FetchServers()
+	if err != nil {
+		t.Skipf("cannot fetch servers: %v", err)
+	}
+	targets, err := serverList.FindServer([]int{})
+	if err != nil || len(targets) == 0 {
+		t.Skip("no speedtest servers found")
+	}
+
+	runner := &SpeedtestRunner{
+		Server: targets[0].ID,
+		client: client,
+	}
+
+	// Cancel before calling Run so the goroutine select fires immediately.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := runner.Run(ctx)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, context.Canceled)
 }

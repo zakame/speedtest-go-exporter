@@ -10,6 +10,7 @@ import (
 	"github.com/showwin/speedtest-go/speedtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockSpeedtestClient is a mock implementation of the SpeedtestClient interface
@@ -17,16 +18,16 @@ type MockSpeedtestClient struct {
 	mock.Mock
 }
 
-func (m *MockSpeedtestClient) FetchServerByID(id string) (*speedtest.Server, error) {
-	args := m.Called(id)
+func (m *MockSpeedtestClient) FetchServerByIDContext(ctx context.Context, id string) (*speedtest.Server, error) {
+	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*speedtest.Server), args.Error(1)
 }
 
-func (m *MockSpeedtestClient) FetchServers() (speedtest.Servers, error) {
-	args := m.Called()
+func (m *MockSpeedtestClient) FetchServerListContext(ctx context.Context) (speedtest.Servers, error) {
+	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -59,7 +60,7 @@ func TestSpeedtestRunner_RunWithSpecificServer(t *testing.T) {
 		5*time.Millisecond,
 	)
 
-	mockClient.On("FetchServerByID", "1234").Return(mockServer, nil)
+	mockClient.On("FetchServerByIDContext", mock.Anything, "1234").Return(mockServer, nil)
 
 	runner := &SpeedtestRunner{
 		Server: "1234",
@@ -75,7 +76,7 @@ func TestSpeedtestRunner_RunWithSpecificServer(t *testing.T) {
 	assert.Equal(t, float64(500000000), result.UploadSpeed)    // 62500000 * 8
 	assert.Equal(t, 25.0, result.Ping)
 	assert.Equal(t, 5.0, result.Jitter)
-	mockClient.AssertCalled(t, "FetchServerByID", "1234")
+	mockClient.AssertCalled(t, "FetchServerByIDContext", mock.Anything, "1234")
 }
 
 // TestSpeedtestRunner_RunWithoutServerID tests Run() finding the best server
@@ -92,7 +93,7 @@ func TestSpeedtestRunner_RunWithoutServerID(t *testing.T) {
 
 	servers := speedtest.Servers{mockServer}
 
-	mockClient.On("FetchServers").Return(servers, nil)
+	mockClient.On("FetchServerListContext", mock.Anything).Return(servers, nil)
 
 	runner := &SpeedtestRunner{
 		Server: "",
@@ -108,7 +109,7 @@ func TestSpeedtestRunner_RunWithoutServerID(t *testing.T) {
 	assert.Equal(t, float64(800000000), result.UploadSpeed)    // 100000000 * 8
 	assert.Equal(t, 15.0, result.Ping)
 	assert.Equal(t, 2.0, result.Jitter)
-	mockClient.AssertCalled(t, "FetchServers")
+	mockClient.AssertCalled(t, "FetchServerListContext", mock.Anything)
 }
 
 // TestSpeedtestRunner_RunWithHighSpeeds tests Run() with high speed results
@@ -123,7 +124,7 @@ func TestSpeedtestRunner_RunWithHighSpeeds(t *testing.T) {
 		1*time.Millisecond,
 	)
 
-	mockClient.On("FetchServerByID", "9999").Return(mockServer, nil)
+	mockClient.On("FetchServerByIDContext", mock.Anything, "9999").Return(mockServer, nil)
 
 	runner := &SpeedtestRunner{
 		Server: "9999",
@@ -153,7 +154,7 @@ func TestSpeedtestRunner_RunWithLowSpeeds(t *testing.T) {
 		50*time.Millisecond,
 	)
 
-	mockClient.On("FetchServerByID", "2222").Return(mockServer, nil)
+	mockClient.On("FetchServerByIDContext", mock.Anything, "2222").Return(mockServer, nil)
 
 	runner := &SpeedtestRunner{
 		Server: "2222",
@@ -185,7 +186,7 @@ func TestNewSpeedtestRunner(t *testing.T) {
 		62500000,  // 500 Mbps in bytes
 		5*time.Millisecond,
 	)
-	mockClient.On("FetchServerByID", "1234").Return(mockServer, nil)
+	mockClient.On("FetchServerByIDContext", mock.Anything, "1234").Return(mockServer, nil)
 
 	// Test that NewSpeedtestRunner doesn't panic
 	runner := NewSpeedtestRunner("1234", reg, mockClient)
@@ -206,11 +207,11 @@ func TestNewSpeedtestRunner_WithNilClient(t *testing.T) {
 	assert.NotNil(t, runner.client)
 }
 
-// TestSpeedtestRunner_FetchServerByIDError verifies that when FetchServerByID
+// TestSpeedtestRunner_FetchServerByIDError verifies that when FetchServerByIDContext
 // returns an error, Run returns (nil, non-nil error) and does not panic.
 func TestSpeedtestRunner_FetchServerByIDError(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
-	mockClient.On("FetchServerByID", "1234").Return(nil, assert.AnError)
+	mockClient.On("FetchServerByIDContext", mock.Anything, "1234").Return(nil, assert.AnError)
 
 	runner := &SpeedtestRunner{
 		Server: "1234",
@@ -221,14 +222,14 @@ func TestSpeedtestRunner_FetchServerByIDError(t *testing.T) {
 
 	assert.Nil(t, result)
 	assert.Error(t, err)
-	mockClient.AssertCalled(t, "FetchServerByID", "1234")
+	mockClient.AssertCalled(t, "FetchServerByIDContext", mock.Anything, "1234")
 }
 
-// TestSpeedtestRunner_FetchServersError verifies that when FetchServers returns
+// TestSpeedtestRunner_FetchServersError verifies that when FetchServerListContext returns
 // an error (no explicit server ID configured), Run returns (nil, non-nil error).
 func TestSpeedtestRunner_FetchServersError(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
-	mockClient.On("FetchServers").Return(nil, assert.AnError)
+	mockClient.On("FetchServerListContext", mock.Anything).Return(nil, assert.AnError)
 
 	runner := &SpeedtestRunner{
 		Server: "",
@@ -239,16 +240,16 @@ func TestSpeedtestRunner_FetchServersError(t *testing.T) {
 
 	assert.Nil(t, result)
 	assert.Error(t, err)
-	mockClient.AssertCalled(t, "FetchServers")
+	mockClient.AssertCalled(t, "FetchServerListContext", mock.Anything)
 }
 
-// TestSpeedtestRunner_NoServersFound verifies that when FetchServers returns an
+// TestSpeedtestRunner_NoServersFound verifies that when FetchServerListContext returns an
 // empty list and FindServer returns no targets, Run returns an error containing
 // "no speedtest servers found".
 func TestSpeedtestRunner_NoServersFound(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
 	// Return an empty (non-nil) server list so the code proceeds to FindServer.
-	mockClient.On("FetchServers").Return(speedtest.Servers{}, nil)
+	mockClient.On("FetchServerListContext", mock.Anything).Return(speedtest.Servers{}, nil)
 
 	runner := &SpeedtestRunner{
 		Server: "",
@@ -259,7 +260,7 @@ func TestSpeedtestRunner_NoServersFound(t *testing.T) {
 
 	assert.Nil(t, result)
 	assert.Error(t, err)
-	mockClient.AssertCalled(t, "FetchServers")
+	mockClient.AssertCalled(t, "FetchServerListContext", mock.Anything)
 }
 
 // TestSpeedtestRunner_NonIntegerServerID verifies that Run returns an error
@@ -276,7 +277,7 @@ func TestSpeedtestRunner_NonIntegerServerID(t *testing.T) {
 		3*time.Millisecond,
 	)
 
-	mockClient.On("FetchServerByID", "not-an-int").Return(mockServer, nil)
+	mockClient.On("FetchServerByIDContext", mock.Anything, "not-an-int").Return(mockServer, nil)
 
 	runner := &SpeedtestRunner{
 		Server: "not-an-int",
@@ -295,7 +296,7 @@ func TestSpeedtestRunner_NonIntegerServerID(t *testing.T) {
 // operators can identify which server caused the problem.
 func TestSpeedtestRunner_FetchServerByIDError_WrapsError(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
-	mockClient.On("FetchServerByID", "9001").Return(nil, assert.AnError)
+	mockClient.On("FetchServerByIDContext", mock.Anything, "9001").Return(nil, assert.AnError)
 
 	runner := &SpeedtestRunner{
 		Server: "9001",
@@ -309,10 +310,10 @@ func TestSpeedtestRunner_FetchServerByIDError_WrapsError(t *testing.T) {
 }
 
 // TestSpeedtestRunner_FetchServersError_WrapsError verifies that the error
-// returned when FetchServers fails contains identifying context.
+// returned when FetchServerListContext fails contains identifying context.
 func TestSpeedtestRunner_FetchServersError_WrapsError(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
-	mockClient.On("FetchServers").Return(nil, assert.AnError)
+	mockClient.On("FetchServerListContext", mock.Anything).Return(nil, assert.AnError)
 
 	runner := &SpeedtestRunner{
 		Server: "",
@@ -331,7 +332,7 @@ func TestSpeedtestRunner_FetchServersError_WrapsError(t *testing.T) {
 // our len(targets)==0 guard is reached, so the wrapped message is "find server: ...".
 func TestSpeedtestRunner_NoServersFound_ErrorMessage(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
-	mockClient.On("FetchServers").Return(speedtest.Servers{}, nil)
+	mockClient.On("FetchServerListContext", mock.Anything).Return(speedtest.Servers{}, nil)
 
 	runner := &SpeedtestRunner{
 		Server: "",
@@ -390,4 +391,155 @@ func TestSpeedtestRunner_ContextCancellation(t *testing.T) {
 
 	assert.Nil(t, result)
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// contextBlockingClient is a SpeedtestClient whose methods block until the
+// supplied context is cancelled.  This lets tests verify that a cancelled
+// context causes Run to return immediately with a context error.
+type contextBlockingClient struct{}
+
+func (contextBlockingClient) FetchServerByIDContext(ctx context.Context, _ string) (*speedtest.Server, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (contextBlockingClient) FetchServerListContext(ctx context.Context) (speedtest.Servers, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// contextCapturingClient records the context passed to it so tests can assert
+// it is the same context forwarded from Run — not a fresh background context.
+type contextCapturingClient struct {
+	capturedCtx context.Context
+	server      *speedtest.Server
+}
+
+func (c *contextCapturingClient) FetchServerByIDContext(ctx context.Context, _ string) (*speedtest.Server, error) {
+	c.capturedCtx = ctx
+	return c.server, nil
+}
+
+func (c *contextCapturingClient) FetchServerListContext(ctx context.Context) (speedtest.Servers, error) {
+	c.capturedCtx = ctx
+	if c.server == nil {
+		return speedtest.Servers{}, nil
+	}
+	return speedtest.Servers{c.server}, nil
+}
+
+// TestSpeedtestRunner_ContextCancelledBeforeFetchServerByID verifies that
+// cancelling the context before (or during) FetchServerByIDContext causes
+// Run to return (nil, context.Canceled) with the "fetch server" wrapping.
+func TestSpeedtestRunner_ContextCancelledBeforeFetchServerByID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel so the blocking client fires immediately
+
+	runner := &SpeedtestRunner{
+		Server: "1234",
+		client: contextBlockingClient{},
+	}
+
+	result, err := runner.Run(ctx)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, context.Canceled,
+		"Run must propagate context.Canceled from FetchServerByIDContext")
+	assert.Contains(t, err.Error(), "fetch server",
+		"error must carry 'fetch server' context for operator diagnostics")
+}
+
+// TestSpeedtestRunner_ContextDeadlineBeforeFetchServerByID mirrors the above
+// for context.DeadlineExceeded, which is the error produced by the collector's
+// WithTimeout when the full speedtest takes too long.
+func TestSpeedtestRunner_ContextDeadlineBeforeFetchServerByID(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Microsecond)
+	defer cancel()
+	time.Sleep(5 * time.Millisecond) // let the deadline expire
+
+	runner := &SpeedtestRunner{
+		Server: "1234",
+		client: contextBlockingClient{},
+	}
+
+	result, err := runner.Run(ctx)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, context.DeadlineExceeded,
+		"Run must propagate context.DeadlineExceeded from FetchServerByIDContext")
+	assert.Contains(t, err.Error(), "fetch server")
+}
+
+// TestSpeedtestRunner_ContextCancelledBeforeFetchServers tests the no-server-ID
+// path where FetchServerListContext is called.  Cancelling before the call must
+// surface as context.Canceled wrapped with "fetch servers".
+func TestSpeedtestRunner_ContextCancelledBeforeFetchServers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runner := &SpeedtestRunner{
+		Server: "",
+		client: contextBlockingClient{},
+	}
+
+	result, err := runner.Run(ctx)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, context.Canceled,
+		"Run must propagate context.Canceled from FetchServerListContext")
+	assert.Contains(t, err.Error(), "fetch servers",
+		"error must carry 'fetch servers' context for operator diagnostics")
+}
+
+// TestSpeedtestRunner_ContextDeadlineBeforeFetchServers mirrors the above for
+// context.DeadlineExceeded on the server-list path.
+func TestSpeedtestRunner_ContextDeadlineBeforeFetchServers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Microsecond)
+	defer cancel()
+	time.Sleep(5 * time.Millisecond)
+
+	runner := &SpeedtestRunner{
+		Server: "",
+		client: contextBlockingClient{},
+	}
+
+	result, err := runner.Run(ctx)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, context.DeadlineExceeded,
+		"Run must propagate context.DeadlineExceeded from FetchServerListContext")
+	assert.Contains(t, err.Error(), "fetch servers")
+}
+
+// TestSpeedtestRunner_ContextForwardedToFetchServerByID verifies that the
+// context passed to Run is the exact same context forwarded to
+// FetchServerByIDContext — not a detached background context.
+func TestSpeedtestRunner_ContextForwardedToFetchServerByID(t *testing.T) {
+	mockServer := createMockServer("42", "Forward ISP", 10*time.Millisecond, 100000, 50000, 2*time.Millisecond)
+	client := &contextCapturingClient{server: mockServer}
+
+	ctx := context.WithValue(context.Background(), struct{ key string }{"trace"}, "test-trace-id")
+
+	runner := &SpeedtestRunner{Server: "42", client: client}
+	_, err := runner.Run(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, ctx, client.capturedCtx,
+		"FetchServerByIDContext must receive the exact context passed to Run, not a new one")
+}
+
+// TestSpeedtestRunner_ContextForwardedToFetchServers verifies context identity
+// on the server-list path.
+func TestSpeedtestRunner_ContextForwardedToFetchServers(t *testing.T) {
+	mockServer := createMockServer("99", "Forward ISP", 10*time.Millisecond, 100000, 50000, 2*time.Millisecond)
+	client := &contextCapturingClient{server: mockServer}
+
+	ctx := context.WithValue(context.Background(), struct{ key string }{"trace"}, "test-trace-id")
+
+	runner := &SpeedtestRunner{Server: "", client: client}
+	_, err := runner.Run(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, ctx, client.capturedCtx,
+		"FetchServerListContext must receive the exact context passed to Run, not a new one")
 }

@@ -4,6 +4,7 @@ package exporter
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -71,7 +72,21 @@ func (se SpeedtestCollector) Collect(ch chan<- prometheus.Metric) {
 
 	s, err := se.runner.Run(ctx)
 	if err != nil {
-		log.WithError(err).Error("Speedtest failed")
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.WithError(err).Error("Speedtest timed out")
+		} else {
+			log.WithError(err).Error("Speedtest failed")
+		}
+		ch <- prometheus.MustNewConstMetric(server, prometheus.GaugeValue, 0)
+		ch <- prometheus.MustNewConstMetric(jitter, prometheus.GaugeValue, 0)
+		ch <- prometheus.MustNewConstMetric(ping, prometheus.GaugeValue, 0)
+		ch <- prometheus.MustNewConstMetric(downloadSpeed, prometheus.GaugeValue, 0)
+		ch <- prometheus.MustNewConstMetric(uploadSpeed, prometheus.GaugeValue, 0)
+		ch <- prometheus.MustNewConstMetric(up, prometheus.GaugeValue, 0)
+		return
+	}
+	if s == nil {
+		log.Error("Speedtest returned no result")
 		ch <- prometheus.MustNewConstMetric(server, prometheus.GaugeValue, 0)
 		ch <- prometheus.MustNewConstMetric(jitter, prometheus.GaugeValue, 0)
 		ch <- prometheus.MustNewConstMetric(ping, prometheus.GaugeValue, 0)

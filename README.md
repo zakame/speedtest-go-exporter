@@ -37,7 +37,7 @@ Download the latest release from the [releases page](https://github.com/zakame/s
 ### Building from Source
 
 Requirements:
-- Go 1.25 or later
+- Go 1.26 or later
 
 ```bash
 git clone https://github.com/zakame/speedtest-go-exporter.git
@@ -61,7 +61,7 @@ Configuration is done via environment variables:
 |----------|-------------|---------|
 | `SPEEDTEST_PORT` | Port to listen on | `9798` |
 | `SPEEDTEST_SERVER` | Speedtest server ID to use (optional, auto-selects if not set) | `` |
-| `SPEEDTEST_EXPORTER_DEBUG` | Enable debug mode (adds Go runtime and process metrics) | `false` |
+| `SPEEDTEST_EXPORTER_DEBUG` | Enable debug mode — any non-empty value enables it (adds Go runtime and process metrics) | `` |
 
 ### Example
 
@@ -74,22 +74,48 @@ export SPEEDTEST_EXPORTER_DEBUG=1
 
 ## Metrics
 
-The exporter provides the following Prometheus metrics:
+The exporter provides the following Prometheus metrics. None carry labels.
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `speedtest_server_id` | Gauge | Speedtest server ID used for the test |
-| `speedtest_jitter_latency_milliseconds` | Gauge | Jitter latency in milliseconds |
-| `speedtest_ping_latency_milliseconds` | Gauge | Ping latency in milliseconds |
-| `speedtest_download_bits_per_second` | Gauge | Download speed in bits per second |
-| `speedtest_upload_bits_per_second` | Gauge | Upload speed in bits per second |
-| `speedtest_up` | Gauge | Speedtest up status (`1` = successful, `0` = failed) |
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `speedtest_server_id` | Gauge | — | Numeric ID of the speedtest server used for the test |
+| `speedtest_jitter_latency_milliseconds` | Gauge | milliseconds | Jitter latency |
+| `speedtest_ping_latency_milliseconds` | Gauge | milliseconds | Ping (round-trip) latency |
+| `speedtest_download_bits_per_second` | Gauge | bits/second | Download speed |
+| `speedtest_upload_bits_per_second` | Gauge | bits/second | Upload speed |
+| `speedtest_up` | Gauge | — | `1` if the last speedtest succeeded, `0` if it failed |
+
+### Example output
+
+```
+# HELP speedtest_download_bits_per_second Speedtest download speed in bits per second.
+# TYPE speedtest_download_bits_per_second gauge
+speedtest_download_bits_per_second 9.4e+08
+# HELP speedtest_jitter_latency_milliseconds Speedtest jitter latency in milliseconds.
+# TYPE speedtest_jitter_latency_milliseconds gauge
+speedtest_jitter_latency_milliseconds 0.512
+# HELP speedtest_ping_latency_milliseconds Speedtest ping latency in milliseconds.
+# TYPE speedtest_ping_latency_milliseconds gauge
+speedtest_ping_latency_milliseconds 7.25
+# HELP speedtest_server_id Speedtest server ID.
+# TYPE speedtest_server_id gauge
+speedtest_server_id 12345
+# HELP speedtest_up Speedtest up status.
+# TYPE speedtest_up gauge
+speedtest_up 1
+# HELP speedtest_upload_bits_per_second Speedtest upload speed in bits per second.
+# TYPE speedtest_upload_bits_per_second gauge
+speedtest_upload_bits_per_second 5.2e+08
+```
+
+### Failure behaviour
 
 When a speedtest fails (network error, server unreachable, timeout), `speedtest_up` is set to `0`
 and all other metrics are set to `0`. Use `speedtest_up == 0` as the signal in alerts — the
 zeroed values for speed/latency metrics on failure should be ignored.
 
-When `SPEEDTEST_EXPORTER_DEBUG` is enabled, additional Go runtime metrics are also exposed.
+When `SPEEDTEST_EXPORTER_DEBUG` is set, additional Go runtime metrics (`go_*`) and process
+metrics (`process_*`) from the standard Prometheus Go client collectors are also exposed.
 
 ## Kubernetes Deployment
 

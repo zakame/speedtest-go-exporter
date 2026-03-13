@@ -207,7 +207,7 @@ func TestNewSpeedtestRunner_WithNilClient(t *testing.T) {
 	assert.NotNil(t, runner.client)
 }
 
-// TestSpeedtestRunner_FetchServerByIDError verifies that when FetchServerByID
+// TestSpeedtestRunner_FetchServerByIDError verifies that when FetchServerByIDContext
 // returns an error, Run returns (nil, non-nil error) and does not panic.
 func TestSpeedtestRunner_FetchServerByIDError(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
@@ -225,7 +225,7 @@ func TestSpeedtestRunner_FetchServerByIDError(t *testing.T) {
 	mockClient.AssertCalled(t, "FetchServerByIDContext", mock.Anything, "1234")
 }
 
-// TestSpeedtestRunner_FetchServersError verifies that when FetchServers returns
+// TestSpeedtestRunner_FetchServersError verifies that when FetchServerListContext returns
 // an error (no explicit server ID configured), Run returns (nil, non-nil error).
 func TestSpeedtestRunner_FetchServersError(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
@@ -310,7 +310,7 @@ func TestSpeedtestRunner_FetchServerByIDError_WrapsError(t *testing.T) {
 }
 
 // TestSpeedtestRunner_FetchServersError_WrapsError verifies that the error
-// returned when FetchServers fails contains identifying context.
+// returned when FetchServerListContext fails contains identifying context.
 func TestSpeedtestRunner_FetchServersError_WrapsError(t *testing.T) {
 	mockClient := new(MockSpeedtestClient)
 	mockClient.On("FetchServerListContext", mock.Anything).Return(nil, assert.AnError)

@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/showwin/speedtest-go v1.7.11
-	github.com/sirupsen/logrus v1.9.4
+	github.com/sirupsen/logrus v1.10.0
 	github.com/stretchr/testify v1.11.1
 )
 

@@ -114,6 +114,13 @@ When a speedtest fails (network error, server unreachable, timeout), `speedtest_
 and all other metrics are set to `0`. Use `speedtest_up == 0` as the signal in alerts — the
 zeroed values for speed/latency metrics on failure should be ignored.
 
+If speedtest-go cannot measure the download or upload speed (it reports "N/A", e.g. on a slow
+uplink), that metric is omitted while `speedtest_up` stays `1`. To alert on it, e.g. for upload:
+
+```promql
+speedtest_up == 1 unless on(job, instance) speedtest_upload_bits_per_second
+```
+
 When `SPEEDTEST_EXPORTER_DEBUG` is set, additional Go runtime metrics (`go_*`) and process
 metrics (`process_*`) from the standard Prometheus Go client collectors are also exposed.
 

@@ -26,6 +26,11 @@ type SpeedtestResult struct {
 	UploadSpeed   float64 `json:"upload_speed"`   // in bits per second
 	Jitter        float64 `json:"jitter"`         // in milliseconds
 	Ping          float64 `json:"ping"`           // in milliseconds
+
+	// DownloadUnavailable and UploadUnavailable are set when speedtest-go
+	// could not measure that direction; the speed field is then meaningless.
+	DownloadUnavailable bool `json:"download_unavailable"`
+	UploadUnavailable   bool `json:"upload_unavailable"`
 }
 
 // Runner is an interface for modelling a speedtest runner.
@@ -93,6 +98,10 @@ func (r *SpeedtestRunner) Run(ctx context.Context) (*SpeedtestResult, error) {
 			return nil, fmt.Errorf("upload test: %w", err)
 		}
 	}
+	// speedtest-go swallows context errors during download/upload.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("speedtest: %w", err)
+	}
 
 	slog.WithFields(log.Fields{
 		"ping":           s.Latency,
@@ -106,12 +115,23 @@ func (r *SpeedtestRunner) Run(ctx context.Context) (*SpeedtestResult, error) {
 		return nil, fmt.Errorf("server returned non-integer ID %q: %w", s.ID, err)
 	}
 
+	// speedtest-go reports an unmeasurable direction as -1 ("N/A"); !(x >= 0) also rejects NaN.
+	dlUnavailable, ulUnavailable := !(s.DLSpeed >= 0), !(s.ULSpeed >= 0)
+	if dlUnavailable {
+		slog.Warn("Download speed unavailable")
+	}
+	if ulUnavailable {
+		slog.Warn("Upload speed unavailable")
+	}
+
 	return &SpeedtestResult{
-		ServerID:      id,
-		DownloadSpeed: float64(s.DLSpeed * 8),                         // Convert to bits per second
-		UploadSpeed:   float64(s.ULSpeed * 8),                         // Convert to bits per second
-		Jitter:        float64(s.Jitter) / float64(time.Millisecond),  // Convert to milliseconds
-		Ping:          float64(s.Latency) / float64(time.Millisecond), // Convert to milliseconds
+		ServerID:            id,
+		DownloadSpeed:       float64(s.DLSpeed * 8),                         // Convert to bits per second
+		UploadSpeed:         float64(s.ULSpeed * 8),                         // Convert to bits per second
+		Jitter:              float64(s.Jitter) / float64(time.Millisecond),  // Convert to milliseconds
+		Ping:                float64(s.Latency) / float64(time.Millisecond), // Convert to milliseconds
+		DownloadUnavailable: dlUnavailable,
+		UploadUnavailable:   ulUnavailable,
 	}, nil
 }
 

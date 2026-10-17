@@ -66,6 +66,7 @@ func (se SpeedtestCollector) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect runs the speedtest and creates metrics to send to the provided
 // channel. On failure, all metrics are set to 0 and speedtest_up is set to 0.
+// A speed that speedtest-go could not measure is omitted.
 func (se SpeedtestCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), se.timeout)
 	defer cancel()
@@ -99,8 +100,12 @@ func (se SpeedtestCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(server, prometheus.GaugeValue, float64(s.ServerID))
 	ch <- prometheus.MustNewConstMetric(jitter, prometheus.GaugeValue, s.Jitter)
 	ch <- prometheus.MustNewConstMetric(ping, prometheus.GaugeValue, s.Ping)
-	ch <- prometheus.MustNewConstMetric(downloadSpeed, prometheus.GaugeValue, s.DownloadSpeed)
-	ch <- prometheus.MustNewConstMetric(uploadSpeed, prometheus.GaugeValue, s.UploadSpeed)
+	if !s.DownloadUnavailable {
+		ch <- prometheus.MustNewConstMetric(downloadSpeed, prometheus.GaugeValue, s.DownloadSpeed)
+	}
+	if !s.UploadUnavailable {
+		ch <- prometheus.MustNewConstMetric(uploadSpeed, prometheus.GaugeValue, s.UploadSpeed)
+	}
 	ch <- prometheus.MustNewConstMetric(up, prometheus.GaugeValue, 1.0)
 }
 
